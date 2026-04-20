@@ -1,0 +1,17 @@
+{
+  "duration": "12m",
+  "vus": 100,
+  "thresholds": {
+    "http_req_duration": [
+      { "threshold": "p95 < 500", "abortOnFail": false },
+      { "threshold": "p99 < 1000", "abortOnFail": false }
+    ],
+    "http_req_failed": [
+      { "threshold": "rate < 0.01", "abortOnFail": false }
+    ],
+    "vus_max": [
+      { "threshold": "value == 100", "abortOnFail": false }
+    ]
+  },
+  "summaryTrendStats": ["min", "avg", "med", "p90", "p95", "p99", "max"]
+}
