@@ -1,0 +1,105 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider = env("DATABASE_PROVIDER", "sqlite")
+  url      = env("DATABASE_URL", "file:./dev.db")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  password      String
+  role          String    @default("participant") // admin, judge, participant
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  submissions   Submission[]
+  scores        Score[]
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Competition {
+  id          String    @id @default(cuid())
+  name        String
+  description String
+  startTime   DateTime
+  endTime     DateTime
+  status      String    @default("upcoming") // upcoming, active, completed
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  problems    Problem[]
+  submissions Submission[]
+  scores      Score[]
+}
+
+model Problem {
+  id          String    @id @default(cuid())
+  competitionId String
+  title       String
+  description String
+  difficulty  String
+  points      Int
+  testCases   Json
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  competition Competition @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+  submissions Submission[]
+}
+
+model Submission {
+  id         String    @id @default(cuid())
+  userId     String
+  problemId  String
+  competitionId String
+  code       String
+  language   String
+  status     String    @default("pending") // pending, running, success, failure
+  score      Int?
+  feedback   String?
+  submittedAt DateTime  @default(now())
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  problem    Problem   @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  competition Competition @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+  scores     Score[]
+}
+
+model Score {
+  id            String    @id @default(cuid())
+  userId        String
+  competitionId String
+  problemId     String
+  score         Int
+  judgeId       String?
+  feedback      String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  competition   Competition @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+  problem       Problem   @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  judge         User?     @relation(fields: [judgeId], references: [id], onDelete: SetNull)
+}
