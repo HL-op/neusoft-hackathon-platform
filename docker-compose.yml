@@ -1,44 +1,55 @@
 version: '3.8'
 
 services:
+  # Judge0 CE
+  judge0:
+    image: judge0/judge0:latest
+    ports:
+      - "2358:2358"
+    environment:
+      - SECRET_KEY_BASE=your_secret_key_here
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=judge0
+      - POSTGRES_PASSWORD=judge0
+      - POSTGRES_DB=judge0
+    depends_on:
+      - postgres
+      - redis
+    restart: always
+
+  # PostgreSQL
+  postgres:
+    image: postgres:13
+    environment:
+      - POSTGRES_USER=judge0
+      - POSTGRES_PASSWORD=judge0
+      - POSTGRES_DB=judge0
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: always
+
+  # Redis
+  redis:
+    image: redis:6
+    volumes:
+      - redis_data:/data
+    restart: always
+
+  # 我们的平台
   app:
     build: .
     ports:
       - "3000:3000"
     environment:
-      - DATABASE_URL=postgresql://postgres:postgres@db:5432/neusoft_hackathon
-      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
-      - NEXTAUTH_URL=${NEXTAUTH_URL}
-      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
+      - DATABASE_URL=postgresql://judge0:judge0@postgres:5432/judge0
       - JUDGE0_API_URL=http://judge0:2358
-      - JUDGE0_API_KEY=${JUDGE0_API_KEY}
+      - SECRET_KEY=your_secret_key_here
     depends_on:
-      - db
+      - postgres
       - judge0
-
-  db:
-    image: postgres:15-alpine
-    ports:
-      - "5432:5432"
-    environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=neusoft_hackathon
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-
-  judge0:
-    image: judge0/judge0:1.13.0
-    ports:
-      - "2358:2358"
-      - "2359:2359"
-    environment:
-      - SECRET_KEY_BASE=${JUDGE0_SECRET_KEY_BASE}
-    volumes:
-      - judge0_data:/var/lib/judge0
-    depends_on:
-      - db
+    restart: always
 
 volumes:
   postgres_data:
-  judge0_data:
+  redis_data:

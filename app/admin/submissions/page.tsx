@@ -27,13 +27,18 @@ interface Submission {
 export default function SubmissionsPage() {
   const { data: session } = useSession()
   const [submissions, setSubmissions] = useState<Submission[]>([])
-  const [selectedSubmission, setSelectedSubmission] = useState<Submission | null>(null)
-  const [showDetailModal, setShowDetailModal] = useState(false)
+  const [selectedStatus, setSelectedStatus] = useState<string>('all')
 
   // 加载提交列表
   const loadSubmissions = async () => {
     try {
+      const whereClause: any = {}
+      if (selectedStatus !== 'all') {
+        whereClause.status = selectedStatus
+      }
+
       const subs = await prisma.submission.findMany({
+        where: whereClause,
         include: {
           user: { select: { name: true, email: true } },
           problem: { select: { title: true } }
@@ -48,23 +53,28 @@ export default function SubmissionsPage() {
 
   useEffect(() => {
     loadSubmissions()
-  }, [])
-
-  // 查看提交详情
-  const viewSubmission = (submission: Submission) => {
-    setSelectedSubmission(submission)
-    setShowDetailModal(true)
-  }
+  }, [selectedStatus])
 
   // 重新评测
-  const rejudgeSubmission = async (id: string) => {
+  const rejudge = async (id: string) => {
     if (confirm('确定要重新评测这个提交吗？')) {
       try {
-        // 这里实现重新评测逻辑
-        alert('重新评测已触发')
-        loadSubmissions()
+        const response = await fetch('/api/rejudge', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ submissionId: id })
+        })
+        if (response.ok) {
+          loadSubmissions()
+          alert('已开始重新评测')
+        } else {
+          alert('重新评测失败')
+        }
       } catch (error) {
         console.error('Error rejudging submission:', error)
+        alert('重新评测失败')
       }
     }
   }
@@ -83,13 +93,34 @@ export default function SubmissionsPage() {
     if (selectedSubmissions.length === 0) return
     if (confirm(`确定要重新评测选中的 ${selectedSubmissions.length} 个提交吗？`)) {
       try {
-        // 这里实现批量重新评测逻辑
-        alert('批量重新评测已触发')
+        for (const id of selectedSubmissions) {
+          await fetch('/api/rejudge', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ submissionId: id })
+          })
+        }
         loadSubmissions()
         setSelectedSubmissions([])
+        alert('已开始批量重新评测')
       } catch (error) {
         console.error('Error rejudging submissions:', error)
+        alert('批量重新评测失败')
       }
+    }
+  }
+
+  // 获取状态颜色
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'ACCEPTED': return 'bg-green-900/50 text-green-400'
+      case 'WRONG_ANSWER': return 'bg-red-900/50 text-red-400'
+      case 'TIME_LIMIT_EXCEEDED': return 'bg-yellow-900/50 text-yellow-400'
+      case 'PENDING': return 'bg-blue-900/50 text-blue-400'
+      case 'RUNNING': return 'bg-purple-900/50 text-purple-400'
+      default: return 'bg-gray-700 text-gray-400'
     }
   }
 
@@ -191,16 +222,30 @@ export default function SubmissionsPage() {
         <main className="flex-1 p-6">
           <div className="space-y-4">
             {/* 操作栏 */}
-            <div className="flex justify-between items-center">
+            <div className="flex flex-wrap justify-between items-center gap-3">
               <h2 className="text-xl font-bold">提交记录</h2>
-              {selectedSubmissions.length > 0 && (
-                <button
-                  onClick={rejudgeSelected}
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg"
+              <div className="flex flex-wrap gap-3">
+                <select
+                  value={selectedStatus}
+                  onChange={(e) => setSelectedStatus(e.target.value)}
+                  className="bg-gray-800 text-white p-2 rounded border border-gray-700"
                 >
-                  批量重新评测 ({selectedSubmissions.length})
-                </button>
-              )}
+                  <option value="all">所有状态</option>
+                  <option value="PENDING">待评测</option>
+                  <option value="RUNNING">评测中</option>
+                  <option value="ACCEPTED">通过</option>
+                  <option value="WRONG_ANSWER">错误</option>
+                  <option value="TIME_LIMIT_EXCEEDED">超时</option>
+                </select>
+                {selectedSubmissions.length > 0 && (
+                  <button
+                    onClick={rejudgeSelected}
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg"
+                  >
+                    批量重测 ({selectedSubmissions.length})
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* 提交列表 */}
@@ -228,7 +273,9 @@ export default function SubmissionsPage() {
                       <th className="text-left py-3 px-4">语言</th>
                       <th className="text-left py-3 px-4">状态</th>
                       <th className="text-left py-3 px-4">得分</th>
-                      <th className="text-left py-3 px-4">时间</th>
+                      <th className="text-left py-3 px-4">运行时间</th>
+                      <th className="text-left py-3 px-4">内存</th>
+                      <th className="text-left py-3 px-4">提交时间</th>
                       <th className="text-left py-3 px-4">操作</th>
                     </tr>
                   </thead>
@@ -243,35 +290,35 @@ export default function SubmissionsPage() {
                             className="rounded text-blue-600"
                           />
                         </td>
-                        <td className="py-3 px-4">{submission.user.name || submission.user.email}</td>
+                        <td className="py-3 px-4 font-medium">
+                          {submission.user.name || submission.user.email}
+                        </td>
                         <td className="py-3 px-4 text-gray-400">{submission.problem.title}</td>
                         <td className="py-3 px-4 text-gray-400">{submission.language}</td>
                         <td className="py-3 px-4">
-                          <span className={`px-2 py-1 rounded ${submission.status === 'ACCEPTED' ? 'bg-green-900/50 text-green-400' : submission.status === 'PENDING' ? 'bg-yellow-900/50 text-yellow-400' : 'bg-red-900/50 text-red-400'}`}>
+                          <span className={`px-2 py-1 rounded ${getStatusColor(submission.status)}`}>
                             {submission.status}
                           </span>
                         </td>
-                        <td className="py-3 px-4 font-bold">
-                          {submission.score !== null ? submission.score : '-'}
+                        <td className="py-3 px-4 text-yellow-400 font-bold">
+                          {submission.score || 0}
+                        </td>
+                        <td className="py-3 px-4 text-gray-400">
+                          {submission.runtime ? `${submission.runtime}ms` : '-'}
+                        </td>
+                        <td className="py-3 px-4 text-gray-400">
+                          {submission.memory ? `${submission.memory}MB` : '-'}
                         </td>
                         <td className="py-3 px-4 text-gray-400">
                           {new Date(submission.createdAt).toLocaleString()}
                         </td>
                         <td className="py-3 px-4">
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => viewSubmission(submission)}
-                              className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded-lg text-sm"
-                            >
-                              查看
-                            </button>
-                            <button
-                              onClick={() => rejudgeSubmission(submission.id)}
-                              className="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded-lg text-sm"
-                            >
-                              重测
-                            </button>
-                          </div>
+                          <button
+                            onClick={() => rejudge(submission.id)}
+                            className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded-lg text-sm"
+                          >
+                            重测
+                          </button>
                         </td>
                       </tr>
                     ))}
@@ -280,75 +327,6 @@ export default function SubmissionsPage() {
               </div>
             </div>
           </div>
-
-          {/* 详情模态框 */}
-          {showDetailModal && selectedSubmission && (
-            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-              <div className="bg-gray-800 rounded-lg p-6 border border-gray-700 w-full max-w-4xl max-h-[80vh] overflow-y-auto">
-                <h3 className="text-xl font-bold mb-4">提交详情</h3>
-                <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <div className="text-sm text-gray-400 mb-1">选手</div>
-                      <div className="font-medium">{selectedSubmission.user.name || selectedSubmission.user.email}</div>
-                    </div>
-                    <div>
-                      <div className="text-sm text-gray-400 mb-1">题目</div>
-                      <div className="font-medium">{selectedSubmission.problem.title}</div>
-                    </div>
-                    <div>
-                      <div className="text-sm text-gray-400 mb-1">语言</div>
-                      <div className="font-medium">{selectedSubmission.language}</div>
-                    </div>
-                    <div>
-                      <div className="text-sm text-gray-400 mb-1">状态</div>
-                      <div className={`font-medium ${selectedSubmission.status === 'ACCEPTED' ? 'text-green-400' : selectedSubmission.status === 'PENDING' ? 'text-yellow-400' : 'text-red-400'}`}>
-                        {selectedSubmission.status}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-sm text-gray-400 mb-1">得分</div>
-                      <div className="font-bold text-yellow-400">
-                        {selectedSubmission.score !== null ? selectedSubmission.score : '-'}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-sm text-gray-400 mb-1">运行时间</div>
-                      <div className="font-medium">
-                        {selectedSubmission.runtime !== null ? `${selectedSubmission.runtime}ms` : '-'}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-sm text-gray-400 mb-1">内存使用</div>
-                      <div className="font-medium">
-                        {selectedSubmission.memory !== null ? `${selectedSubmission.memory}MB` : '-'}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-sm text-gray-400 mb-1">提交时间</div>
-                      <div className="font-medium">
-                        {new Date(selectedSubmission.createdAt).toLocaleString()}
-                      </div>
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-sm text-gray-400 mb-1">代码</div>
-                    <div className="bg-gray-900 p-4 rounded-lg overflow-x-auto">
-                      <pre className="text-sm">{selectedSubmission.code}</pre>
-                    </div>
-                  </div>
-                </div>
-                <div className="mt-6 flex justify-end">
-                  <button
-                    onClick={() => setShowDetailModal(false)}
-                    className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg"
-                  >
-                    关闭
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
         </main>
       </div>
     </div>

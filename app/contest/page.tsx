@@ -66,7 +66,7 @@ export default function ContestPage() {
   // 语言配置
   const languages = [
     { value: 'javascript', label: 'JavaScript' },
-    { value: 'python', label: 'Python' },
+    { value: 'python3', label: 'Python 3.10' },
     { value: 'java', label: 'Java' },
     { value: 'cpp', label: 'C++' }
   ]
@@ -233,42 +233,63 @@ export default function ContestPage() {
     try {
       setIsSubmitting(true)
 
-      const user = await prisma.user.findUnique({
-        where: { email: session.user.email }
+      const response = await fetch('/api/submit-code', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          code,
+          language,
+          problemId: selectedProblem.id,
+          timeLimit: selectedProblem.timeLimit,
+          memoryLimit: selectedProblem.memoryLimit
+        })
       })
 
-      if (user && competition) {
-        const submission = await prisma.submission.create({
-          data: {
-            code,
-            language,
-            status: 'PENDING',
-            userId: user.id,
-            problemId: selectedProblem.id,
-            competitionId: competition.id
-          }
-        })
-
-        // 模拟评测结果
-        setTimeout(async () => {
-          await prisma.submission.update({
-            where: { id: submission.id },
-            data: {
-              status: 'ACCEPTED',
-              score: selectedProblem.score,
-              runtime: 123,
-              memory: 45678
+      if (response.ok) {
+        const submission = await response.json()
+        alert('代码提交成功，正在评测中...')
+        
+        // 定期检查评测结果
+        const checkStatus = async () => {
+          try {
+            const user = await prisma.user.findUnique({
+              where: { email: session.user.email }
+            })
+            
+            if (user) {
+              const updatedSubmissions = await prisma.submission.findMany({
+                where: { userId: user.id, problemId: selectedProblem.id },
+                orderBy: { createdAt: 'desc' }
+              })
+              
+              const latestSubmission = updatedSubmissions[0]
+              if (latestSubmission && latestSubmission.status !== 'PENDING' && latestSubmission.status !== 'RUNNING') {
+                loadSubmissions(selectedProblem.id)
+                setIsSubmitting(false)
+                // 模拟AI评测
+                simulateAIEvaluation()
+              } else {
+                // 继续检查
+                setTimeout(checkStatus, 2000)
+              }
             }
-          })
+          } catch (error) {
+            console.error('Error checking submission status:', error)
+            setIsSubmitting(false)
+          }
+        }
 
-          // 模拟AI评测
-          simulateAIEvaluation()
-          loadSubmissions(selectedProblem.id)
-          setIsSubmitting(false)
-        }, 2000)
+        setTimeout(checkStatus, 2000)
+      } else {
+        const error = await response.json()
+        alert('提交失败: ' + error.error)
+        setIsSubmitting(false)
       }
     } catch (error) {
       console.error('Error submitting code:', error)
+      alert('提交失败，请重试')
       setIsSubmitting(false)
     }
   }
@@ -305,7 +326,7 @@ export default function ContestPage() {
     switch (lang) {
       case 'javascript':
         return 'function solution() {\n  // 你的代码\n  return "Hello world";\n}\n\nconsole.log(solution());'
-      case 'python':
+      case 'python3':
         return 'def solution():\n    # 你的代码\n    return "Hello world"\n\nprint(solution())'
       case 'java':
         return 'public class Main {\n    public static void main(String[] args) {\n        // 你的代码\n        System.out.println("Hello world");\n    }\n}'
