@@ -1,0 +1,135 @@
+version: '3.8'
+
+services:
+  # 前端服务
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - API_URL=https://your-domain.com/api
+    restart: always
+    depends_on:
+      - backend
+    networks:
+      - hackathon_network
+
+  # 后端服务
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    ports:
+      - "8000:8000"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://hackathon:hackathon@postgres:5432/hackathon
+      - JUDGE0_API_URL=http://judge0:2358
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
+      - SECRET_KEY=${SECRET_KEY}
+      - NEXTAUTH_URL=https://your-domain.com
+    restart: always
+    depends_on:
+      - postgres
+      - judge0
+    networks:
+      - hackathon_network
+
+  # PostgreSQL数据库
+  postgres:
+    image: postgres:13
+    environment:
+      - POSTGRES_USER=hackathon
+      - POSTGRES_PASSWORD=hackathon
+      - POSTGRES_DB=hackathon
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres-init:/docker-entrypoint-initdb.d
+    restart: always
+    networks:
+      - hackathon_network
+
+  # Judge0 CE
+  judge0:
+    image: judge0/judge0:latest
+    ports:
+      - "2358:2358"
+    environment:
+      - SECRET_KEY_BASE=${SECRET_KEY_BASE}
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=judge0
+      - POSTGRES_PASSWORD=judge0
+      - POSTGRES_DB=judge0
+    depends_on:
+      - postgres
+      - redis
+    restart: always
+    networks:
+      - hackathon_network
+
+  # Redis
+  redis:
+    image: redis:6
+    volumes:
+      - redis_data:/data
+    restart: always
+    networks:
+      - hackathon_network
+
+  # Nginx反向代理
+  nginx:
+    image: nginx:latest
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx/certs:/etc/nginx/certs
+      - ./nginx/html:/usr/share/nginx/html
+    restart: always
+    depends_on:
+      - frontend
+      - backend
+    networks:
+      - hackathon_network
+
+  # Prometheus监控
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    restart: always
+    networks:
+      - hackathon_network
+
+  # Grafana监控
+  grafana:
+    image: grafana/grafana:latest
+    volumes:
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
+    restart: always
+    depends_on:
+      - prometheus
+    networks:
+      - hackathon_network
+
+volumes:
+  postgres_data:
+  redis_data:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  hackathon_network:
+    driver: bridge

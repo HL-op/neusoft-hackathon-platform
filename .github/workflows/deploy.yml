@@ -1,0 +1,47 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build project
+        run: npm run build
+
+      - name: Deploy to server
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USERNAME }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          port: ${{ secrets.SERVER_PORT || '22' }}
+          script: |
+            # 进入项目目录
+            cd /home/ubuntu/neusoft-hackathon-platform
+            
+            # 拉取最新代码
+            git pull origin main
+            
+            # 停止并移除旧容器
+            docker-compose -f docker-compose.prod.yml down
+            
+            # 构建并启动新容器
+            docker-compose -f docker-compose.prod.yml up -d --build
+            
+            # 清理未使用的镜像
+            docker system prune -f
