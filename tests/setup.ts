@@ -46,3 +46,14 @@ vi.mock('next/navigation', () => ({
   usePathname: vi.fn().mockReturnValue('/'),
   useSearchParams: vi.fn().mockReturnValue(new URLSearchParams()),
 }))
+
+// 模拟axios
+vi.mock('axios', () => ({
+  default: {
+    get: vi.fn(),
+    post: vi.fn(),
+    create: vi.fn().mockReturnThis(),
+  },
+  get: vi.fn(),
+  post: vi.fn(),
+}))
